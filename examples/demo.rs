@@ -8,7 +8,7 @@ use nfsserve::{
         self, fattr3, fileid3, filename3, ftype3, nfspath3, nfsstat3, nfstime3, sattr3, specdata3,
     },
     tcp::*,
-    vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities},
+    vfs::{AuthContext, DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities},
 };
 
 #[derive(Debug, Clone)]
@@ -129,7 +129,7 @@ impl NFSFileSystem for DemoFS {
         VFSCapabilities::ReadWrite
     }
 
-    async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
+    async fn write(&self, _auth: &AuthContext, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
         {
             let mut fs = self.fs.lock().unwrap();
             let mut fssize = fs[id as usize].attr.size;
@@ -144,11 +144,12 @@ impl NFSFileSystem for DemoFS {
             fs[id as usize].attr.size = fssize;
             fs[id as usize].attr.used = fssize;
         }
-        self.getattr(id).await
+        self.getattr(_auth, id).await
     }
 
     async fn create(
         &self,
+        _auth: &AuthContext,
         dirid: fileid3,
         filename: &filename3,
         _attr: sattr3,
@@ -167,18 +168,19 @@ impl NFSFileSystem for DemoFS {
                 dir.push(newid);
             }
         }
-        Ok((newid, self.getattr(newid).await.unwrap()))
+        Ok((newid, self.getattr(_auth, newid).await.unwrap()))
     }
 
     async fn create_exclusive(
         &self,
+        _auth: &AuthContext,
         _dirid: fileid3,
         _filename: &filename3,
     ) -> Result<fileid3, nfsstat3> {
         Err(nfsstat3::NFS3ERR_NOTSUPP)
     }
 
-    async fn lookup(&self, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
+    async fn lookup(&self, _auth: &AuthContext, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
         let fs = self.fs.lock().unwrap();
         let entry = fs.get(dirid as usize).ok_or(nfsstat3::NFS3ERR_NOENT)?;
         if let FSContents::File(_) = entry.contents {
@@ -202,12 +204,12 @@ impl NFSFileSystem for DemoFS {
         }
         Err(nfsstat3::NFS3ERR_NOENT)
     }
-    async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3> {
+    async fn getattr(&self, _auth: &AuthContext, id: fileid3) -> Result<fattr3, nfsstat3> {
         let fs = self.fs.lock().unwrap();
         let entry = fs.get(id as usize).ok_or(nfsstat3::NFS3ERR_NOENT)?;
         Ok(entry.attr)
     }
-    async fn setattr(&self, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3> {
+    async fn setattr(&self, _auth: &AuthContext, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3> {
         let mut fs = self.fs.lock().unwrap();
         let entry = fs.get_mut(id as usize).ok_or(nfsstat3::NFS3ERR_NOENT)?;
         match setattr.atime {
@@ -263,6 +265,7 @@ impl NFSFileSystem for DemoFS {
 
     async fn read(
         &self,
+        _auth: &AuthContext,
         id: fileid3,
         offset: u64,
         count: u32,
@@ -288,6 +291,7 @@ impl NFSFileSystem for DemoFS {
 
     async fn readdir(
         &self,
+        _auth: &AuthContext,
         dirid: fileid3,
         start_after: fileid3,
         max_entries: usize,
@@ -333,7 +337,7 @@ impl NFSFileSystem for DemoFS {
     /// If not supported dur to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
     #[allow(unused)]
-    async fn remove(&self, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3> {
+    async fn remove(&self, _auth: &AuthContext, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3> {
         return Err(nfsstat3::NFS3ERR_NOTSUPP);
     }
 
@@ -343,6 +347,7 @@ impl NFSFileSystem for DemoFS {
     #[allow(unused)]
     async fn rename(
         &self,
+        _auth: &AuthContext,
         from_dirid: fileid3,
         from_filename: &filename3,
         to_dirid: fileid3,
@@ -354,6 +359,7 @@ impl NFSFileSystem for DemoFS {
     #[allow(unused)]
     async fn mkdir(
         &self,
+        _auth: &AuthContext,
         _dirid: fileid3,
         _dirname: &filename3,
     ) -> Result<(fileid3, fattr3), nfsstat3> {
@@ -362,6 +368,7 @@ impl NFSFileSystem for DemoFS {
 
     async fn symlink(
         &self,
+        _auth: &AuthContext,
         _dirid: fileid3,
         _linkname: &filename3,
         _symlink: &nfspath3,
@@ -369,8 +376,29 @@ impl NFSFileSystem for DemoFS {
     ) -> Result<(fileid3, fattr3), nfsstat3> {
         Err(nfsstat3::NFS3ERR_ROFS)
     }
-    async fn readlink(&self, _id: fileid3) -> Result<nfspath3, nfsstat3> {
+    async fn readlink(&self, _auth: &AuthContext, _id: fileid3) -> Result<nfspath3, nfsstat3> {
         return Err(nfsstat3::NFS3ERR_NOTSUPP);
+    }
+    
+    async fn mknod(
+        &self,
+        _auth: &AuthContext,
+        _dirid: fileid3,
+        _filename: &filename3,
+        _ftype: ftype3,
+        _attr: &sattr3,
+    ) -> Result<(fileid3, fattr3), nfsstat3> {
+        Err(nfsstat3::NFS3ERR_NOTSUPP)
+    }
+    
+    async fn link(
+        &self,
+        _auth: &AuthContext,
+        _fileid: fileid3,
+        _linkdirid: fileid3,
+        _linkname: &filename3,
+    ) -> Result<(), nfsstat3> {
+        Err(nfsstat3::NFS3ERR_NOTSUPP)
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::context::RPCContext;
 use crate::mount::*;
 use crate::rpc::*;
+use crate::vfs::AuthContext;
 use crate::xdr::*;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::{FromPrimitive, ToPrimitive};
@@ -106,7 +107,7 @@ pub async fn mountproc3_mnt(
         mountstat3::MNT3ERR_NOENT.serialize(output)?;
         return Ok(());
     };
-    if let Ok(fileid) = context.vfs.path_to_id(&path).await {
+    if let Ok(fileid) = context.vfs.path_to_id(&AuthContext::from_rpc_auth(&context.auth), &path).await {
         let response = mountres3_ok {
             fhandle: context.vfs.id_to_fh(fileid).data,
             auth_flavors: vec![

@@ -4,6 +4,33 @@ use async_trait::async_trait;
 use std::cmp::Ordering;
 use std::sync::Once;
 use std::time::SystemTime;
+
+/// Authentication context passed to filesystem operations
+#[derive(Clone, Debug)]
+pub struct AuthContext {
+    /// User ID of the caller
+    pub uid: u32,
+    /// Primary group ID of the caller
+    pub gid: u32,
+    /// Additional group IDs the user belongs to
+    pub gids: Vec<u32>,
+}
+
+impl AuthContext {
+    /// Create a new AuthContext from RPC auth_unix
+    pub fn from_rpc_auth(auth: &crate::rpc::auth_unix) -> Self {
+        AuthContext {
+            uid: auth.uid,
+            gid: auth.gid,
+            gids: auth.gids.clone(),
+        }
+    }
+    
+    /// Check if the user belongs to a specific group
+    pub fn is_member_of_group(&self, gid: u32) -> bool {
+        self.gid == gid || self.gids.contains(&gid)
+    }
+}
 #[derive(Default, Debug)]
 pub struct DirEntrySimple {
     pub fileid: fileid3,
@@ -106,21 +133,21 @@ pub trait NFSFileSystem: Sync {
     /// and this should return the id of the file "dir/a.txt"
     ///
     /// This method should be fast as it is used very frequently.
-    async fn lookup(&self, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3>;
+    async fn lookup(&self, auth: &AuthContext, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3>;
 
     /// Returns the attributes of an id.
     /// This method should be fast as it is used very frequently.
-    async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3>;
+    async fn getattr(&self, auth: &AuthContext, id: fileid3) -> Result<fattr3, nfsstat3>;
 
     /// Sets the attributes of an id
     /// this should return Err(nfsstat3::NFS3ERR_ROFS) if readonly
-    async fn setattr(&self, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3>;
+    async fn setattr(&self, auth: &AuthContext, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3>;
 
     /// Reads the contents of a file returning (bytes, EOF)
     /// Note that offset/count may go past the end of the file and that
     /// in that case, all bytes till the end of file are returned.
     /// EOF must be flagged if the end of the file is reached by the read.
-    async fn read(&self, id: fileid3, offset: u64, count: u32)
+    async fn read(&self, auth: &AuthContext, id: fileid3, offset: u64, count: u32)
         -> Result<(Vec<u8>, bool), nfsstat3>;
 
     /// Writes the contents of a file returning (bytes, EOF)
@@ -128,13 +155,14 @@ pub trait NFSFileSystem: Sync {
     /// in that case, the file is extended.
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
-    async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3>;
+    async fn write(&self, auth: &AuthContext, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3>;
 
     /// Creates a file with the following attributes.
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
     async fn create(
         &self,
+        auth: &AuthContext,
         dirid: fileid3,
         filename: &filename3,
         attr: sattr3,
@@ -144,6 +172,7 @@ pub trait NFSFileSystem: Sync {
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
     async fn create_exclusive(
         &self,
+        auth: &AuthContext,
         dirid: fileid3,
         filename: &filename3,
     ) -> Result<fileid3, nfsstat3>;
@@ -153,6 +182,7 @@ pub trait NFSFileSystem: Sync {
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
     async fn mkdir(
         &self,
+        auth: &AuthContext,
         dirid: fileid3,
         dirname: &filename3,
     ) -> Result<(fileid3, fattr3), nfsstat3>;
@@ -160,13 +190,14 @@ pub trait NFSFileSystem: Sync {
     /// Removes a file.
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
-    async fn remove(&self, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3>;
+    async fn remove(&self, auth: &AuthContext, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3>;
 
     /// Removes a file.
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
     async fn rename(
         &self,
+        auth: &AuthContext,
         from_dirid: fileid3,
         from_filename: &filename3,
         to_dirid: fileid3,
@@ -183,6 +214,7 @@ pub trait NFSFileSystem: Sync {
     //
     async fn readdir(
         &self,
+        auth: &AuthContext,
         dirid: fileid3,
         start_after: fileid3,
         max_entries: usize,
@@ -192,11 +224,12 @@ pub trait NFSFileSystem: Sync {
     /// Only need to return filename and id
     async fn readdir_simple(
         &self,
+        auth: &AuthContext,
         dirid: fileid3,
         count: usize,
     ) -> Result<ReadDirSimpleResult, nfsstat3> {
         Ok(ReadDirSimpleResult::from_readdir_result(
-            &self.readdir(dirid, 0, count).await?,
+            &self.readdir(auth, dirid, 0, count).await?,
         ))
     }
 
@@ -205,6 +238,7 @@ pub trait NFSFileSystem: Sync {
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
     async fn symlink(
         &self,
+        auth: &AuthContext,
         dirid: fileid3,
         linkname: &filename3,
         symlink: &nfspath3,
@@ -212,15 +246,39 @@ pub trait NFSFileSystem: Sync {
     ) -> Result<(fileid3, fattr3), nfsstat3>;
 
     /// Reads a symlink
-    async fn readlink(&self, id: fileid3) -> Result<nfspath3, nfsstat3>;
+    async fn readlink(&self, auth: &AuthContext, id: fileid3) -> Result<nfspath3, nfsstat3>;
+
+    /// Creates a special file (block device, character device, socket, or FIFO)
+    /// If not supported due to readonly file system
+    /// this should return Err(nfsstat3::NFS3ERR_ROFS)
+    async fn mknod(
+        &self,
+        auth: &AuthContext,
+        dirid: fileid3,
+        filename: &filename3,
+        ftype: ftype3,
+        attr: &sattr3,
+    ) -> Result<(fileid3, fattr3), nfsstat3>;
+
+    /// Creates a hard link to an existing file
+    /// If not supported due to readonly file system
+    /// this should return Err(nfsstat3::NFS3ERR_ROFS)
+    async fn link(
+        &self,
+        auth: &AuthContext,
+        fileid: fileid3,
+        linkdirid: fileid3,
+        linkname: &filename3,
+    ) -> Result<(), nfsstat3>;
 
     /// Get static file system Information
     async fn fsinfo(
         &self,
+        auth: &AuthContext,
         root_fileid: fileid3,
     ) -> Result<fsinfo3, nfsstat3> {
 
-        let dir_attr: nfs::post_op_attr = match self.getattr(root_fileid).await {
+        let dir_attr: nfs::post_op_attr = match self.getattr(auth, root_fileid).await {
             Ok(v) => nfs::post_op_attr::attributes(v),
             Err(_) => nfs::post_op_attr::Void,
         };
@@ -268,14 +326,14 @@ pub trait NFSFileSystem: Sync {
     }
     /// Converts a complete path to a fileid.  Optional.
     /// The default implementation walks the directory structure with lookup()
-    async fn path_to_id(&self, path: &[u8]) -> Result<fileid3, nfsstat3> {
+    async fn path_to_id(&self, auth: &AuthContext, path: &[u8]) -> Result<fileid3, nfsstat3> {
         let splits = path.split(|&r| r == b'/');
         let mut fid = self.root_dir();
         for component in splits {
             if component.is_empty() {
                 continue;
             }
-            fid = self.lookup(fid, &component.into()).await?;
+            fid = self.lookup(auth, fid, &component.into()).await?;
         }
         Ok(fid)
     }

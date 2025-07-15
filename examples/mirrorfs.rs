@@ -17,7 +17,7 @@ use tracing::debug;
 use nfsserve::fs_util::*;
 use nfsserve::nfs::*;
 use nfsserve::tcp::{NFSTcp, NFSTcpListener};
-use nfsserve::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
+use nfsserve::vfs::{AuthContext, DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
 #[derive(Debug, Clone)]
 struct FSEntry {
@@ -334,7 +334,7 @@ impl NFSFileSystem for MirrorFS {
         VFSCapabilities::ReadWrite
     }
 
-    async fn lookup(&self, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
+    async fn lookup(&self, _auth: &AuthContext, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
         let mut fsmap = self.fsmap.lock().await;
         if let Ok(id) = fsmap.find_child(dirid, filename).await {
             if fsmap.id_to_path.contains_key(&id) {
@@ -365,7 +365,7 @@ impl NFSFileSystem for MirrorFS {
         //debug!(" -- lookup result {:?}", res);
     }
 
-    async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3> {
+    async fn getattr(&self, _auth: &AuthContext, id: fileid3) -> Result<fattr3, nfsstat3> {
         //debug!("Stat query {:?}", id);
         let mut fsmap = self.fsmap.lock().await;
         if let RefreshResult::Delete = fsmap.refresh_entry(id).await? {
@@ -379,6 +379,7 @@ impl NFSFileSystem for MirrorFS {
 
     async fn read(
         &self,
+        _auth: &AuthContext,
         id: fileid3,
         offset: u64,
         count: u32,
@@ -408,6 +409,7 @@ impl NFSFileSystem for MirrorFS {
 
     async fn readdir(
         &self,
+        _auth: &AuthContext,
         dirid: fileid3,
         start_after: fileid3,
         max_entries: usize,
@@ -462,7 +464,7 @@ impl NFSFileSystem for MirrorFS {
         Ok(ret)
     }
 
-    async fn setattr(&self, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3> {
+    async fn setattr(&self, _auth: &AuthContext, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3> {
         let mut fsmap = self.fsmap.lock().await;
         let entry = fsmap.find_entry(id)?;
         let path = fsmap.sym_to_path(&entry.name).await;
@@ -475,7 +477,7 @@ impl NFSFileSystem for MirrorFS {
         }
         Ok(metadata_to_fattr3(id, &metadata))
     }
-    async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
+    async fn write(&self, _auth: &AuthContext, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
         let fsmap = self.fsmap.lock().await;
         let ent = fsmap.find_entry(id)?;
         let path = fsmap.sym_to_path(&ent.name).await;
@@ -508,6 +510,7 @@ impl NFSFileSystem for MirrorFS {
 
     async fn create(
         &self,
+        _auth: &AuthContext,
         dirid: fileid3,
         filename: &filename3,
         setattr: sattr3,
@@ -518,6 +521,7 @@ impl NFSFileSystem for MirrorFS {
 
     async fn create_exclusive(
         &self,
+        _auth: &AuthContext,
         dirid: fileid3,
         filename: &filename3,
     ) -> Result<fileid3, nfsstat3> {
@@ -527,7 +531,7 @@ impl NFSFileSystem for MirrorFS {
             .0)
     }
 
-    async fn remove(&self, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3> {
+    async fn remove(&self, _auth: &AuthContext, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3> {
         let mut fsmap = self.fsmap.lock().await;
         let ent = fsmap.find_entry(dirid)?;
         let mut path = fsmap.sym_to_path(&ent.name).await;
@@ -572,6 +576,7 @@ impl NFSFileSystem for MirrorFS {
 
     async fn rename(
         &self,
+        _auth: &AuthContext,
         from_dirid: fileid3,
         from_filename: &filename3,
         to_dirid: fileid3,
@@ -643,6 +648,7 @@ impl NFSFileSystem for MirrorFS {
     }
     async fn mkdir(
         &self,
+        _auth: &AuthContext,
         dirid: fileid3,
         dirname: &filename3,
     ) -> Result<(fileid3, fattr3), nfsstat3> {
@@ -652,6 +658,7 @@ impl NFSFileSystem for MirrorFS {
 
     async fn symlink(
         &self,
+        _auth: &AuthContext,
         dirid: fileid3,
         linkname: &filename3,
         symlink: &nfspath3,
@@ -664,7 +671,7 @@ impl NFSFileSystem for MirrorFS {
         )
         .await
     }
-    async fn readlink(&self, id: fileid3) -> Result<nfspath3, nfsstat3> {
+    async fn readlink(&self, _auth: &AuthContext, id: fileid3) -> Result<nfspath3, nfsstat3> {
         let fsmap = self.fsmap.lock().await;
         let ent = fsmap.find_entry(id)?;
         let path = fsmap.sym_to_path(&ent.name).await;
@@ -678,6 +685,83 @@ impl NFSFileSystem for MirrorFS {
         } else {
             Err(nfsstat3::NFS3ERR_BADTYPE)
         }
+    }
+    
+    async fn mknod(
+        &self,
+        _auth: &AuthContext,
+        dirid: fileid3,
+        filename: &filename3,
+        ftype: ftype3,
+        attr: &sattr3,
+    ) -> Result<(fileid3, fattr3), nfsstat3> {
+        // For mirrorfs, we'll create regular files for special file types
+        // since creating actual device files requires elevated privileges
+        match ftype {
+            ftype3::NF3CHR | ftype3::NF3BLK => {
+                // Create a regular file to represent the device
+                self.create_fs_object(dirid, filename, &CreateFSObject::File(*attr))
+                    .await
+            }
+            ftype3::NF3SOCK | ftype3::NF3FIFO => {
+                // FIFOs can be created with mkfifo, but for simplicity create regular files
+                self.create_fs_object(dirid, filename, &CreateFSObject::File(*attr))
+                    .await
+            }
+            _ => Err(nfsstat3::NFS3ERR_BADTYPE),
+        }
+    }
+    
+    async fn link(
+        &self,
+        _auth: &AuthContext,
+        fileid: fileid3,
+        linkdirid: fileid3,
+        linkname: &filename3,
+    ) -> Result<(), nfsstat3> {
+        let mut fsmap = self.fsmap.lock().await;
+        
+        // Get the file path
+        let file_entry = fsmap.find_entry(fileid)?;
+        let file_path = fsmap.sym_to_path(&file_entry.name).await;
+        
+        // Get the link directory path
+        let linkdir_entry = fsmap.find_entry(linkdirid)?;
+        let mut link_path = fsmap.sym_to_path(&linkdir_entry.name).await;
+        link_path.push(OsStr::from_bytes(linkname));
+        
+        // Create the hard link
+        tokio::fs::hard_link(&file_path, &link_path)
+            .await
+            .map_err(|e| {
+                debug!("Failed to create hard link: {:?}", e);
+                match e.kind() {
+                    std::io::ErrorKind::PermissionDenied => nfsstat3::NFS3ERR_ACCES,
+                    std::io::ErrorKind::NotFound => nfsstat3::NFS3ERR_NOENT,
+                    std::io::ErrorKind::AlreadyExists => nfsstat3::NFS3ERR_EXIST,
+                    _ => nfsstat3::NFS3ERR_IO,
+                }
+            })?;
+        
+        // Update the fsmap with the new link
+        let link_sym = fsmap
+            .intern
+            .intern(OsStr::from_bytes(linkname).to_os_string())
+            .unwrap();
+        let mut link_sympath = linkdir_entry.name.clone();
+        link_sympath.push(link_sym);
+        
+        // The link points to the same fileid as the original file
+        fsmap.path_to_id.insert(link_sympath.clone(), fileid);
+        
+        // Update the directory's children if needed
+        if let Ok(linkdir_entry_mut) = fsmap.find_entry_mut(linkdirid) {
+            if let Some(ref mut children) = linkdir_entry_mut.children {
+                children.insert(fileid);
+            }
+        }
+        
+        Ok(())
     }
 }
 

@@ -560,6 +560,229 @@ pub struct symlinkdata3 {
 }
 XDRStruct!(symlinkdata3, symlink_attributes, symlink_data);
 
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct devicedata3 {
+    pub dev_attributes: sattr3,
+    pub spec: specdata3,
+}
+XDRStruct!(devicedata3, dev_attributes, spec);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+#[repr(u32)]
+pub enum mknoddata3 {
+    NF3CHR(devicedata3),
+    NF3BLK(devicedata3),
+    NF3SOCK(sattr3),
+    NF3FIFO(sattr3),
+    NF3REG,
+    NF3DIR,
+    NF3LNK,
+}
+
+impl XDR for mknoddata3 {
+    fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
+        match self {
+            mknoddata3::NF3CHR(dev) => {
+                ftype3::NF3CHR.serialize(dest)?;
+                dev.serialize(dest)?;
+            }
+            mknoddata3::NF3BLK(dev) => {
+                ftype3::NF3BLK.serialize(dest)?;
+                dev.serialize(dest)?;
+            }
+            mknoddata3::NF3SOCK(attr) => {
+                ftype3::NF3SOCK.serialize(dest)?;
+                attr.serialize(dest)?;
+            }
+            mknoddata3::NF3FIFO(attr) => {
+                ftype3::NF3FIFO.serialize(dest)?;
+                attr.serialize(dest)?;
+            }
+            mknoddata3::NF3REG => {
+                ftype3::NF3REG.serialize(dest)?;
+            }
+            mknoddata3::NF3DIR => {
+                ftype3::NF3DIR.serialize(dest)?;
+            }
+            mknoddata3::NF3LNK => {
+                ftype3::NF3LNK.serialize(dest)?;
+            }
+        }
+        Ok(())
+    }
+    
+    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+        let mut ftype = ftype3::default();
+        ftype.deserialize(src)?;
+        match ftype {
+            ftype3::NF3CHR => {
+                let mut dev = devicedata3::default();
+                dev.deserialize(src)?;
+                *self = mknoddata3::NF3CHR(dev);
+            }
+            ftype3::NF3BLK => {
+                let mut dev = devicedata3::default();
+                dev.deserialize(src)?;
+                *self = mknoddata3::NF3BLK(dev);
+            }
+            ftype3::NF3SOCK => {
+                let mut attr = sattr3::default();
+                attr.deserialize(src)?;
+                *self = mknoddata3::NF3SOCK(attr);
+            }
+            ftype3::NF3FIFO => {
+                let mut attr = sattr3::default();
+                attr.deserialize(src)?;
+                *self = mknoddata3::NF3FIFO(attr);
+            }
+            ftype3::NF3REG => {
+                *self = mknoddata3::NF3REG;
+            }
+            ftype3::NF3DIR => {
+                *self = mknoddata3::NF3DIR;
+            }
+            ftype3::NF3LNK => {
+                *self = mknoddata3::NF3LNK;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+pub struct MKNOD3args {
+    pub where_: diropargs3,
+    pub what: mknoddata3,
+}
+XDRStruct!(MKNOD3args, where_, what);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct MKNOD3resok {
+    pub obj: post_op_fh3,
+    pub obj_attributes: post_op_attr,
+    pub dir_wcc: wcc_data,
+}
+XDRStruct!(MKNOD3resok, obj, obj_attributes, dir_wcc);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct MKNOD3resfail {
+    pub dir_wcc: wcc_data,
+}
+XDRStruct!(MKNOD3resfail, dir_wcc);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+#[repr(u32)]
+pub enum MKNOD3res {
+    NFS3_OK(MKNOD3resok),
+    Error(nfsstat3, MKNOD3resfail),
+}
+
+impl XDR for MKNOD3res {
+    fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
+        match self {
+            MKNOD3res::NFS3_OK(resok) => {
+                nfsstat3::NFS3_OK.serialize(dest)?;
+                resok.serialize(dest)?;
+            }
+            MKNOD3res::Error(status, resfail) => {
+                status.serialize(dest)?;
+                resfail.serialize(dest)?;
+            }
+        }
+        Ok(())
+    }
+    
+    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+        let mut status = nfsstat3::NFS3_OK;
+        status.deserialize(src)?;
+        match status {
+            nfsstat3::NFS3_OK => {
+                let mut resok = MKNOD3resok::default();
+                resok.deserialize(src)?;
+                *self = MKNOD3res::NFS3_OK(resok);
+            }
+            _ => {
+                let mut resfail = MKNOD3resfail::default();
+                resfail.deserialize(src)?;
+                *self = MKNOD3res::Error(status, resfail);
+            }
+        }
+        Ok(())
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+pub struct LINK3args {
+    pub file: nfs_fh3,
+    pub link: diropargs3,
+}
+XDRStruct!(LINK3args, file, link);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct LINK3resok {
+    pub file_attributes: post_op_attr,
+    pub linkdir_wcc: wcc_data,
+}
+XDRStruct!(LINK3resok, file_attributes, linkdir_wcc);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct LINK3resfail {
+    pub file_attributes: post_op_attr,
+    pub linkdir_wcc: wcc_data,
+}
+XDRStruct!(LINK3resfail, file_attributes, linkdir_wcc);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+#[repr(u32)]
+pub enum LINK3res {
+    NFS3_OK(LINK3resok),
+    Error(nfsstat3, LINK3resfail),
+}
+
+impl XDR for LINK3res {
+    fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
+        match self {
+            LINK3res::NFS3_OK(resok) => {
+                nfsstat3::NFS3_OK.serialize(dest)?;
+                resok.serialize(dest)?;
+            }
+            LINK3res::Error(status, resfail) => {
+                status.serialize(dest)?;
+                resfail.serialize(dest)?;
+            }
+        }
+        Ok(())
+    }
+    
+    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+        let mut status = nfsstat3::NFS3_OK;
+        status.deserialize(src)?;
+        match status {
+            nfsstat3::NFS3_OK => {
+                let mut resok = LINK3resok::default();
+                resok.deserialize(src)?;
+                *self = LINK3res::NFS3_OK(resok);
+            }
+            _ => {
+                let mut resfail = LINK3resfail::default();
+                resfail.deserialize(src)?;
+                *self = LINK3res::Error(status, resfail);
+            }
+        }
+        Ok(())
+    }
+}
+
 /// We define the root handle here
 pub fn get_root_mount_handle() -> Vec<u8> {
     vec![0]
