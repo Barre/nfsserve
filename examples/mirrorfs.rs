@@ -651,6 +651,7 @@ impl NFSFileSystem for MirrorFS {
         _auth: &AuthContext,
         dirid: fileid3,
         dirname: &filename3,
+        _attrs: &sattr3,
     ) -> Result<(fileid3, fattr3), nfsstat3> {
         self.create_fs_object(dirid, dirname, &CreateFSObject::Directory)
             .await

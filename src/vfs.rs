@@ -185,6 +185,7 @@ pub trait NFSFileSystem: Sync {
         auth: &AuthContext,
         dirid: fileid3,
         dirname: &filename3,
+        attrs: &sattr3,
     ) -> Result<(fileid3, fattr3), nfsstat3>;
 
     /// Removes a file.

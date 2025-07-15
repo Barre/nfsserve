@@ -1936,7 +1936,7 @@ pub async fn nfsproc3_mkdir(
         }
     };
 
-    let res = context.vfs.mkdir(&auth_from_context(context), dirid, &args.dirops.name).await;
+    let res = context.vfs.mkdir(&auth_from_context(context), dirid, &args.dirops.name, &args.attributes).await;
 
     // Re-read dir attributes for post op attr
     let post_dir_attr = match context.vfs.getattr(&auth_from_context(context), dirid).await {

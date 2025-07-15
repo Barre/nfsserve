@@ -362,6 +362,7 @@ impl NFSFileSystem for DemoFS {
         _auth: &AuthContext,
         _dirid: fileid3,
         _dirname: &filename3,
+        _attrs: &sattr3,
     ) -> Result<(fileid3, fattr3), nfsstat3> {
         Err(nfsstat3::NFS3ERR_ROFS)
     }
