@@ -612,7 +612,7 @@ impl XDR for mknoddata3 {
         }
         Ok(())
     }
-    
+
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut ftype = ftype3::default();
         ftype.deserialize(src)?;
@@ -697,7 +697,7 @@ impl XDR for MKNOD3res {
         }
         Ok(())
     }
-    
+
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut status = nfsstat3::NFS3_OK;
         status.deserialize(src)?;
@@ -763,7 +763,7 @@ impl XDR for LINK3res {
         }
         Ok(())
     }
-    
+
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut status = nfsstat3::NFS3_OK;
         status.deserialize(src)?;

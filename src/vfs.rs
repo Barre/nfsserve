@@ -1,5 +1,5 @@
-use crate::nfs::*;
 use crate::nfs;
+use crate::nfs::*;
 use async_trait::async_trait;
 use std::cmp::Ordering;
 use std::sync::Once;
@@ -25,7 +25,7 @@ impl AuthContext {
             gids: auth.gids.clone(),
         }
     }
-    
+
     /// Check if the user belongs to a specific group
     pub fn is_member_of_group(&self, gid: u32) -> bool {
         self.gid == gid || self.gids.contains(&gid)
@@ -133,7 +133,12 @@ pub trait NFSFileSystem: Sync {
     /// and this should return the id of the file "dir/a.txt"
     ///
     /// This method should be fast as it is used very frequently.
-    async fn lookup(&self, auth: &AuthContext, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3>;
+    async fn lookup(
+        &self,
+        auth: &AuthContext,
+        dirid: fileid3,
+        filename: &filename3,
+    ) -> Result<fileid3, nfsstat3>;
 
     /// Returns the attributes of an id.
     /// This method should be fast as it is used very frequently.
@@ -141,21 +146,37 @@ pub trait NFSFileSystem: Sync {
 
     /// Sets the attributes of an id
     /// this should return Err(nfsstat3::NFS3ERR_ROFS) if readonly
-    async fn setattr(&self, auth: &AuthContext, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3>;
+    async fn setattr(
+        &self,
+        auth: &AuthContext,
+        id: fileid3,
+        setattr: sattr3,
+    ) -> Result<fattr3, nfsstat3>;
 
     /// Reads the contents of a file returning (bytes, EOF)
     /// Note that offset/count may go past the end of the file and that
     /// in that case, all bytes till the end of file are returned.
     /// EOF must be flagged if the end of the file is reached by the read.
-    async fn read(&self, auth: &AuthContext, id: fileid3, offset: u64, count: u32)
-        -> Result<(Vec<u8>, bool), nfsstat3>;
+    async fn read(
+        &self,
+        auth: &AuthContext,
+        id: fileid3,
+        offset: u64,
+        count: u32,
+    ) -> Result<(Vec<u8>, bool), nfsstat3>;
 
     /// Writes the contents of a file returning (bytes, EOF)
     /// Note that offset/count may go past the end of the file and that
     /// in that case, the file is extended.
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
-    async fn write(&self, auth: &AuthContext, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3>;
+    async fn write(
+        &self,
+        auth: &AuthContext,
+        id: fileid3,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<fattr3, nfsstat3>;
 
     /// Creates a file with the following attributes.
     /// If not supported due to readonly file system
@@ -191,7 +212,12 @@ pub trait NFSFileSystem: Sync {
     /// Removes a file.
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
-    async fn remove(&self, auth: &AuthContext, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3>;
+    async fn remove(
+        &self,
+        auth: &AuthContext,
+        dirid: fileid3,
+        filename: &filename3,
+    ) -> Result<(), nfsstat3>;
 
     /// Removes a file.
     /// If not supported due to readonly file system
@@ -252,6 +278,7 @@ pub trait NFSFileSystem: Sync {
     /// Creates a special file (block device, character device, socket, or FIFO)
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
+    /// For character and block devices, spec contains the major/minor device numbers
     async fn mknod(
         &self,
         auth: &AuthContext,
@@ -259,6 +286,7 @@ pub trait NFSFileSystem: Sync {
         filename: &filename3,
         ftype: ftype3,
         attr: &sattr3,
+        spec: Option<&specdata3>,
     ) -> Result<(fileid3, fattr3), nfsstat3>;
 
     /// Creates a hard link to an existing file
@@ -273,12 +301,7 @@ pub trait NFSFileSystem: Sync {
     ) -> Result<(), nfsstat3>;
 
     /// Get static file system Information
-    async fn fsinfo(
-        &self,
-        auth: &AuthContext,
-        root_fileid: fileid3,
-    ) -> Result<fsinfo3, nfsstat3> {
-
+    async fn fsinfo(&self, auth: &AuthContext, root_fileid: fileid3) -> Result<fsinfo3, nfsstat3> {
         let dir_attr: nfs::post_op_attr = match self.getattr(auth, root_fileid).await {
             Ok(v) => nfs::post_op_attr::attributes(v),
             Err(_) => nfs::post_op_attr::Void,

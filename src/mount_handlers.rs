@@ -107,7 +107,11 @@ pub async fn mountproc3_mnt(
         mountstat3::MNT3ERR_NOENT.serialize(output)?;
         return Ok(());
     };
-    if let Ok(fileid) = context.vfs.path_to_id(&AuthContext::from_rpc_auth(&context.auth), &path).await {
+    if let Ok(fileid) = context
+        .vfs
+        .path_to_id(&AuthContext::from_rpc_auth(&context.auth), &path)
+        .await
+    {
         let response = mountres3_ok {
             fhandle: context.vfs.id_to_fh(fileid).data,
             auth_flavors: vec![
