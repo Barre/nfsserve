@@ -300,6 +300,27 @@ pub trait NFSFileSystem: Sync {
         linkname: &filename3,
     ) -> Result<(), nfsstat3>;
 
+    /// Commit pending writes to stable storage
+    /// Returns a write verifier that can be used to detect server restarts
+    async fn commit(
+        &self,
+        _auth: &AuthContext,
+        _fileid: fileid3,
+        _offset: u64,
+        _count: u32,
+    ) -> Result<writeverf3, nfsstat3> {
+        // Default implementation: since writes are synchronous (FILE_SYNC),
+        // commit is a no-op that just returns the write verifier
+        Ok(self.get_write_verf())
+    }
+
+    /// Get the current write verifier for this filesystem
+    fn get_write_verf(&self) -> writeverf3 {
+        // Default implementation returns a static verifier
+        // Real implementations should generate this based on boot time or similar
+        [0u8; NFS3_WRITEVERFSIZE as usize]
+    }
+
     /// Get static file system Information
     async fn fsinfo(&self, auth: &AuthContext, root_fileid: fileid3) -> Result<fsinfo3, nfsstat3> {
         let dir_attr: nfs::post_op_attr = match self.getattr(auth, root_fileid).await {
