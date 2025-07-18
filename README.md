@@ -3,6 +3,14 @@ Rust NFSv3 Server
 This is an incomplete but very functional implementation of an NFSv3 server
 in Rust.
 
+License
+-------
+This project uses a dual-license approach:
+- **Original code** (Copyright 2023, XetData): Licensed under the BSD 3-Clause License (see [LICENSE](LICENSE))
+- **All modifications and new code**: Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
+
+See [LICENSE-MODIFICATIONS](LICENSE-MODIFICATIONS) for the full AGPL license text that applies to all changes.
+
 Why? You may ask. 
 
 I wanted to implement a user-mode file-system mount that is truly cross-platform.
