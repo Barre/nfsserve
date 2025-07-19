@@ -333,6 +333,30 @@ XDRStruct!(
 );
 
 #[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct fsstat3 {
+    pub obj_attributes: post_op_attr,
+    pub tbytes: size3,
+    pub fbytes: size3,
+    pub abytes: size3,
+    pub tfiles: size3,
+    pub ffiles: size3,
+    pub afiles: size3,
+    pub invarsec: u32,
+}
+XDRStruct!(
+    fsstat3,
+    obj_attributes,
+    tbytes,
+    fbytes,
+    abytes,
+    tfiles,
+    ffiles,
+    afiles,
+    invarsec
+);
+
+#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct wcc_attr {
     pub size: size3,

@@ -347,6 +347,26 @@ pub trait NFSFileSystem: Sync {
         Ok(res)
     }
 
+    /// Get file system statistics
+    async fn fsstat(&self, auth: &AuthContext, fileid: fileid3) -> Result<fsstat3, nfsstat3> {
+        let obj_attr = match self.getattr(auth, fileid).await {
+            Ok(v) => nfs::post_op_attr::attributes(v),
+            Err(_) => nfs::post_op_attr::Void,
+        };
+
+        let res = fsstat3 {
+            obj_attributes: obj_attr,
+            tbytes: 1024 * 1024 * 1024 * 1024,
+            fbytes: 1024 * 1024 * 1024 * 1024,
+            abytes: 1024 * 1024 * 1024 * 1024,
+            tfiles: 1024 * 1024 * 1024,
+            ffiles: 1024 * 1024 * 1024,
+            afiles: 1024 * 1024 * 1024,
+            invarsec: u32::MAX,
+        };
+        Ok(res)
+    }
+
     /// Converts the fileid to an opaque NFS file handle. Optional.
     fn id_to_fh(&self, id: fileid3) -> nfs_fh3 {
         let gennum = get_generation_number();

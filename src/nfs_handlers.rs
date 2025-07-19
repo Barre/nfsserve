@@ -642,29 +642,7 @@ pub async fn nfsproc3_pathconf(
     Ok(())
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Debug, Default)]
-struct FSSTAT3resok {
-    obj_attributes: nfs::post_op_attr,
-    tbytes: nfs::size3,
-    fbytes: nfs::size3,
-    abytes: nfs::size3,
-    tfiles: nfs::size3,
-    ffiles: nfs::size3,
-    afiles: nfs::size3,
-    invarsec: u32,
-}
-XDRStruct!(
-    FSSTAT3resok,
-    obj_attributes,
-    tbytes,
-    fbytes,
-    abytes,
-    tfiles,
-    ffiles,
-    afiles,
-    invarsec
-);
+// FSSTAT3resok is now defined as nfs::fsstat3 in the nfs module
 
 /*
  FSSTAT3res NFSPROC3_FSSTAT(FSSTAT3args) = 18;
@@ -716,24 +694,24 @@ pub async fn nfsproc3_fsstat(
     }
     let id = id.unwrap();
 
-    let obj_attr = match context.vfs.getattr(&auth_from_context(context), id).await {
-        Ok(v) => nfs::post_op_attr::attributes(v),
-        Err(_) => nfs::post_op_attr::Void,
-    };
-    let res = FSSTAT3resok {
-        obj_attributes: obj_attr,
-        tbytes: 1024 * 1024 * 1024 * 1024,
-        fbytes: 1024 * 1024 * 1024 * 1024,
-        abytes: 1024 * 1024 * 1024 * 1024,
-        tfiles: 1024 * 1024 * 1024,
-        ffiles: 1024 * 1024 * 1024,
-        afiles: 1024 * 1024 * 1024,
-        invarsec: u32::MAX,
-    };
-    make_success_reply(xid).serialize(output)?;
-    nfs::nfsstat3::NFS3_OK.serialize(output)?;
-    debug!(" {:?} ---> {:?}", xid, res);
-    res.serialize(output)?;
+    match context.vfs.fsstat(&auth_from_context(context), id).await {
+        Ok(res) => {
+            make_success_reply(xid).serialize(output)?;
+            nfs::nfsstat3::NFS3_OK.serialize(output)?;
+            debug!(" {:?} ---> {:?}", xid, res);
+            res.serialize(output)?;
+        }
+        Err(stat) => {
+            make_success_reply(xid).serialize(output)?;
+            stat.serialize(output)?;
+            // FSSTAT3resfail - just post_op_attr
+            let obj_attr = match context.vfs.getattr(&auth_from_context(context), id).await {
+                Ok(v) => nfs::post_op_attr::attributes(v),
+                Err(_) => nfs::post_op_attr::Void,
+            };
+            obj_attr.serialize(output)?;
+        }
+    }
     Ok(())
 }
 
@@ -1388,7 +1366,7 @@ pub async fn nfsproc3_commit(
     {
         Ok(verf) => {
             debug!("commit success {:?}", xid);
-            
+
             // Get post-operation attributes
             let post_obj_attr = match context.vfs.getattr(&auth_from_context(context), id).await {
                 Ok(v) => nfs::post_op_attr::attributes(v),
