@@ -1244,13 +1244,30 @@ pub async fn nfsproc3_write(
     {
         Ok(fattr) => {
             debug!("write success {:?} --> {:?}", xid, fattr);
+
+            let requested_stable =
+                stable_how::from_u32(args.stable).unwrap_or(stable_how::UNSTABLE);
+            let committed = match requested_stable {
+                stable_how::UNSTABLE => stable_how::UNSTABLE,
+                stable_how::DATA_SYNC | stable_how::FILE_SYNC => {
+                    match context
+                        .vfs
+                        .commit(&auth_from_context(context), id, args.offset, args.count)
+                        .await
+                    {
+                        Ok(_) => requested_stable,
+                        Err(_) => stable_how::UNSTABLE,
+                    }
+                }
+            };
+
             let res = WRITE3resok {
                 file_wcc: nfs::wcc_data {
                     before: pre_obj_attr,
                     after: nfs::post_op_attr::attributes(fattr),
                 },
                 count: args.count,
-                committed: stable_how::FILE_SYNC,
+                committed,
                 verf: context.vfs.serverid(),
             };
             make_success_reply(xid).serialize(output)?;
